@@ -1,99 +1,88 @@
 # AI Research Assistant
 
-**Status: Planning / documentation only.** This repository currently contains a project specification and implementation roadmap. No working application, provider integration, deployment, or measured results are included yet.
+A bounded research agent that searches, fetches source text, synthesizes a brief, verifies exact supporting quotes, saves results, and exports Markdown.
 
-A personal learning project by [Harshad Odakkal](https://github.com/harshadok), building on professional Flutter and mobile engineering experience while transitioning toward AI/mobile engineering.
+**Implemented local portfolio application**, with source, persistent storage, runnable API, synthetic examples, automated tests, and a demo script. The interactive API at `/docs` is the included client. This repository does not claim a production deployment, a native mobile client, or previously measured customer usage.
 
-## Problem and goal
+## Features
 
-Help users investigate a question and review a concise research brief with traceable sources and clearly identified uncertainty.
+- Live Wikipedia search integration with a declared User-Agent; no paid search API key.
+- Bounded agent pipeline: search → fetch → synthesize → verify, with per-tool traces.
+- Maximum one search, five source fetches, and one model call per request.
+- Source URLs, retrieval timestamps, content hashes, exact quotes, and source IDs.
+- Unknown citations or quotes absent from the source are rejected from findings.
+- Explicit sources-only mode, insufficient-evidence results, saved failures, and Markdown export.
 
-## Skills to practise
+## Install and run
 
-- Search integration
-- AI agents
-- Source verification
-- Citation tracking
-- Evidence-based synthesis
+Use Python 3.9–3.12 (developed/tested here with 3.9.6; Python 3.11 is recommended for a new environment).
 
-## Planned end-to-end workflow
-
-1. Accept a research question and a bounded research budget.
-2. Generate focused search queries and retrieve candidate results.
-3. Fetch accessible source pages and record titles, URLs, and retrieval timestamps.
-4. Use a bounded agent workflow to collect and compare supporting evidence.
-5. Check that each factual statement has relevant source support and flag contradictions.
-6. Present a research brief with citations and unresolved questions.
-
-## Proposed architecture
-
-Flutter research and source viewer; Python API service; search provider adapter; page extraction adapter; LLM agent workflow; evidence store.
-
-The stack is a design proposal. Specific providers, libraries, model versions, and database products will be selected and documented during implementation.
-
-## Planned API surface
-
-- `POST /research` — start a bounded research job
-- `GET /research/{id}/status` — inspect progress and budget usage
-- `GET /research/{id}/brief` — retrieve the brief and citations
-- `GET /research/{id}/sources` — inspect collected evidence
-
-These endpoints are proposed contracts; they are not implemented.
-
-## Core data model
-
-ResearchJob(question, limits, status); Source(url, title, retrieved_at, excerpt); Claim(text, source_ids, verification_state); Brief(summary, claims, uncertainties).
-
-## Flutter/mobile experience
-
-Research question form, progress indicator, brief reader, source cards, and claim-to-evidence navigation.
-
-## Evaluation and acceptance plan
-
-- [ ] Verify cited URLs resolve and cited passages support the associated claims.
-- [ ] Test conflicting sources, inaccessible pages, and questions with insufficient evidence.
-- [ ] Enforce search, model-call, time, and token budgets.
-- [ ] Check that instructions embedded in retrieved pages cannot trigger unintended tools.
-- [ ] Assess claim support and source coverage on a small manually reviewed dataset.
-
-No accuracy, latency, cost, or reliability results have been measured. Results will be added only after reproducible runs.
-
-## Implementation roadmap
-
-- [ ] **Milestone 1:** Build search retrieval and store source metadata.
-- [ ] **Milestone 2:** Add page extraction and a claim-to-source evidence model.
-- [ ] **Milestone 3:** Implement a bounded search, read, and synthesize agent workflow.
-- [ ] **Milestone 4:** Add citation checks, contradiction handling, and a Flutter brief viewer.
-- [ ] **Milestone 5:** Publish sample briefs and a manually reviewed verification report.
-
-## Planned demonstration
-
-Research a narrow question using public sources, inspect evidence for individual claims, and demonstrate how conflicting information is displayed.
-
-## Data and operational boundaries
-
-Treat retrieved pages as untrusted data. Restrict fetched destinations, avoid private-network access, and label unsupported claims and uncertainty.
-
-## Getting started today
-
-1. Read the proposed workflow and choose the first milestone.
-2. Decide on providers and local development tools; record those decisions before implementation.
-3. Add application code and a reproducible setup guide as the first milestone is built.
-4. Use synthetic or public test data and keep credentials outside version control.
-
-**There is no runnable quick start yet.** Installation and run commands will be added when code exists.
-
-## Suggested future layout
-
-```text
-apps/mobile/        # Planned Flutter client
-services/api/       # Planned application API
-evals/              # Planned fixtures and evaluation runs
-docs/               # Architecture decisions and demonstration notes
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
 ```
 
-These directories describe the intended structure and have not been implemented.
+For AI operations, install [Ollama](https://ollama.com/download), start its local server, and pull a model:
 
-## Portfolio context
+```sh
+ollama serve
+# In a second terminal:
+ollama pull qwen2.5:1.5b
+export AI_MODEL=qwen2.5:1.5b
+./scripts/start.sh
+```
 
-This is an independent planned portfolio project, not client work or a production deployment. Its current scope is documentation; update the status and roadmap as working milestones are completed.
+Open [interactive API docs](http://127.0.0.1:8103/docs). The default service port is 8103; override with `PORT`. Keep one API worker bound to localhost. This single-user application has no authentication and stores development data in ignored `data/`; do not expose it as a multi-user public service.
+
+Configuration is read from environment variables. `.env.example` documents them but is not automatically executed or loaded. `OLLAMA_BASE_URL` defaults to `http://127.0.0.1:11434`; `AI_MODEL` selects the installed local model. Providers run on the backend computer; the initial model downloads need internet. No paid API credentials are required.
+
+`requirements.txt` contains portable version ranges; `requirements-lock.txt`, when present, records the exact versions installed in this macOS development environment.
+
+## Walkthrough
+
+1. `POST /research` with `{"question":"Retrieval-augmented generation","max_sources":1,"synthesize":true}`.
+2. Inspect `sources`, accepted `claims`, `rejected_claims`, `uncertainties`, and `traces`.
+3. Each accepted claim has a known source and a quote present in its fetched text.
+4. `GET /research` lists saved runs; `GET /research/{id}` reopens one.
+5. `GET /research/{id}/export` returns a Markdown brief containing accepted findings, sources, and uncertainty.
+6. Set `synthesize:false` to run real search/retrieval without requiring a model.
+
+With the API running, execute the synthetic walkthrough in another terminal:
+
+```sh
+source .venv/bin/activate
+python scripts/demo.py
+```
+
+Use `--url http://127.0.0.1:PORT` to target a different local port. `/docs` exposes the full request and response schemas for manual testing.
+
+## Tests
+
+```sh
+python -m pytest -q
+```
+
+The current automated suite has **4 passing tests** covering workflow behaviour and important failures. Tests inject provider doubles to remain deterministic; `VERIFICATION.md` separately records real-provider checks. Automated CI runs the deterministic suite without model credentials. The synthetic demo is not a production accuracy benchmark.
+
+## Agent design
+
+`ResearchAgent` is a deliberately finite, tool-using agent rather than an unbounded recursive loop. Its tool traces show what was searched, fetched, synthesized, and verified. The local model supplies structured claims; deterministic code checks source IDs and normalized exact-quote inclusion before accepting them.
+
+`WikipediaSearch` uses the public MediaWiki API. There is no API key or paid search dependency. Sources-only mode works independently of Ollama.
+
+Modules: `app/main.py` contains search tools, the agent, schema and verification, persistence endpoints, and export.
+
+## Operational boundaries
+
+- Wikipedia is the search corpus; this is not an unrestricted web search crawler. Fetched URLs are constructed by the server from Wikipedia page IDs, preventing arbitrary internal URL fetches.
+- A source's accessibility and a quote's presence are checked. This does not establish factual truth, independent corroboration, or logical entailment. The API and exports label that scope explicitly.
+- Source extracts are capped at 12,000 characters. Fetching has a 75-second budget plus bounded HTTP request timeouts; one synthesis call has its own 180-second timeout.
+- Source instructions are treated as untrusted text. Prompt injection and model synthesis errors remain possible; review important findings against the sources.
+- A failed provider run is saved as failed and cannot be exported as a completed brief.
+
+## Technical references
+
+- [FastAPI](https://fastapi.tiangolo.com/)
+- [Ollama API](https://github.com/ollama/ollama/blob/main/docs/api.md)
